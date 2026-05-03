@@ -1,0 +1,14 @@
+from unittest.mock import patch, MagicMock
+from PyQt6.QtWidgets import QApplication
+
+app = QApplication.instance() or QApplication([])
+from gui.controllers.proxy_controller import ProxyController
+
+with patch("gui.controllers.proxy_controller.HealthChecker"), patch("gui.controllers.proxy_controller.ProxyProcess") as MockProc:
+    mock_proc = MockProc.return_value
+    mock_proc.is_running.return_value = True
+    ctrl = ProxyController()
+    logs=[]
+    ctrl.log_received.connect(logs.append)
+    ctrl.start_proxy("https://example.com", "key", 11434)
+    print('EMITTED LOGS:', logs)
