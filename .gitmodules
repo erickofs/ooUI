@@ -1,0 +1,4 @@
+[submodule "ooproxy"]
+	path = ooproxy
+	url = https://github.com/MockbaTheBorg/ooProxy
+	branch = main

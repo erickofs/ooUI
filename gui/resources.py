@@ -3,7 +3,8 @@
 ooProxy installation is discovered via (in order of precedence):
   1. ``~/.ooUI/config``  →  ``ooproxy_home`` field  (primary)
   2. ``OOPROXY_HOME``    env var                      (advanced override)
-  3. ``None``            — caller must handle (first-run dialog in main.py)
+  3. ``<project_root>/ooproxy/``                      (bundled submodule)
+  4. ``None``            — caller must handle (first-run dialog in main.py)
 """
 
 from __future__ import annotations
@@ -50,6 +51,10 @@ def load_ooproxy_home() -> Path | None:
         p = Path(env)
         if (p / "ooproxy.py").exists():
             return p
+    # 3. Bundled git submodule
+    bundled = PROJECT_ROOT / "ooproxy"
+    if (bundled / "ooproxy.py").exists():
+        return bundled
     return None
 
 

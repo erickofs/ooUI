@@ -1,0 +1,33 @@
+name: Bump ooProxy submodule
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update submodule to latest main
+        id: update
+        run: git submodule update --remote ooproxy
+
+      - name: Rollback on failure
+        if: failure() && steps.update.conclusion == 'failure'
+        run: git checkout ooproxy
+
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git diff --quiet ooproxy || (
+            git add ooproxy &&
+            git commit -m "chore: bump ooProxy submodule to latest main" &&
+            git push
+          )
