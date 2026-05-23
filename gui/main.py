@@ -75,8 +75,15 @@ def main() -> int:
         return 1
 
     from gui.main_window import MainWindow
+    
+    # Check for --start-minimized flag
+    start_minimized = "--start-minimized" in sys.argv
+    
     window = MainWindow()
-    window.show()
+    if start_minimized:
+        window.show_in_tray()
+    else:
+        window.show()
 
     return app.exec()
 

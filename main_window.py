@@ -150,6 +150,19 @@ class MainWindow(QMainWindow):
         # Check proxy health (delayed slightly to let the UI render first)
         QTimer.singleShot(200, self._proxy_ctrl.initial_check)
 
+    def show_in_tray(self) -> None:
+        """Initialize the window but keep it hidden in the tray (for auto-start)."""
+        # Initialize without showing the window
+        self._initialize()
+        # Optionally show a tray message
+        if self._tray_icon:
+            self._tray_icon.showMessage(
+                "ooProxy Manager",
+                t("tray.started_minimized"),
+                QSystemTrayIcon.MessageIcon.Information,
+                2000,
+            )
+
     # ── Slots ─────────────────────────────────────────────────────
 
     def _update_status_bar(self, status: ProxyStatus) -> None:
