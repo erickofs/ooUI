@@ -189,7 +189,21 @@ def get_ooproxy_script() -> str:
 
 
 def get_ps1_script() -> str:
-    return str(_ooproxy_home / "Start-OoProxy.ps1") if _ooproxy_home else ""
+    """Get the path to Start-OoProxy.ps1, creating it if necessary.
+    
+    This function ensures the PowerShell script exists before returning its path.
+    
+    Returns:
+        The full path to Start-OoProxy.ps1, or empty string if ooProxy home is not set.
+    """
+    if not _ooproxy_home:
+        return ""
+    
+    try:
+        return ensure_ps1_script()
+    except Exception:
+        # Fallback: return the path even if script creation failed
+        return str(_ooproxy_home / "Start-OoProxy.ps1")
 
 
 def get_python_path() -> str:
@@ -210,6 +224,152 @@ def get_tool_scripts() -> list[dict[str, str]]:
             label = entry.stem.replace("_", " ").title()
             tools.append({"name": label, "filename": entry.name, "path": str(entry)})
     return tools
+
+
+# ── PowerShell Script Bootstrap ───────────────────────────────────────────
+
+def _get_ps1_script_content(ooui_root: Path) -> str:
+    """Generate the Start-OoProxy.ps1 script content.
+    
+    Args:
+        ooui_root: The ooUI project root directory.
+        
+    Returns:
+        The PowerShell script content as a string.
+    """
+    return f"""<#
+.SYNOPSIS
+    Installs or removes the ooUI auto-start Scheduled Task.
+
+.DESCRIPTION
+    This script creates (or removes) a Windows Scheduled Task that launches
+    the ooUI application (with the ooProxy server) at user logon, starting
+    minimized in the system tray.
+
+    -Install     Register the Scheduled Task.
+    -Uninstall   Remove the Scheduled Task.
+
+    The task runs the ooUI GUI application with ``--start-minimized`` flag,
+    which initializes the proxy and minimizes the window to the system tray.
+    It uses the ooUI project's own Python interpreter (``.venv\\Scripts\\python.exe``).
+
+.PARAMETER Install
+    Register the Scheduled Task.
+
+.PARAMETER Uninstall
+    Remove the Scheduled Task.
+
+.EXAMPLE
+    .\\Start-OoProxy.ps1 -Install
+    .\\Start-OoProxy.ps1 -Uninstall
+#>
+
+param(
+    [switch]$$Install,
+    [switch]$$Uninstall
+)
+
+$$TaskName = "ooProxy-AutoStart"
+$$TaskDesc = "Starts ooProxy Manager at user logon (minimized in system tray)"
+
+# Get the path to the ooUI project root (parent of the ooproxy directory)
+$$OoProxyRoot = Split-Path -Parent $$MyInvocation.MyCommand.Path
+$$OoUIRoot = Split-Path -Parent $$OoProxyRoot
+
+# Prefer the bundled venv in ooUI; fall back to system python
+$$PythonExe = Join-Path $$OoUIRoot ".venv\\Scripts\\python.exe"
+if (-not (Test-Path $$PythonExe)) {{
+    $$PythonExe = "python"
+}}
+
+# Set working directory to ooUI root
+$$WorkingDir = $$OoUIRoot
+
+# Command to run: python -m gui.main --start-minimized
+# This will start the ooUI application minimized in the system tray
+$$TaskAction = New-ScheduledTaskAction -Execute $$PythonExe `
+    -Argument "-m gui.main --start-minimized" `
+    -WorkingDirectory $$WorkingDir
+
+$$TaskTrigger = New-ScheduledTaskTrigger -AtLogOn -User $$env:USERNAME
+$$TaskSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+
+$$Principal = New-ScheduledTaskPrincipal -UserId $$env:USERNAME -LogonType Interactive -RunLevel Limited
+
+if ($$Install) {{
+    Write-Output "Registering Scheduled Task '$$TaskName'..."
+
+    Register-ScheduledTask -TaskName $$TaskName `
+        -Action $$TaskAction `
+        -Trigger $$TaskTrigger `
+        -Settings $$TaskSettings `
+        -Principal $$Principal `
+        -Description $$TaskDesc `
+        -Force
+
+    if ($$?) {{
+        Write-Output "Scheduled Task '$$TaskName' registered successfully."
+        exit 0
+    }} else {{
+        Write-Error "Failed to register Scheduled Task '$$TaskName'."
+        exit 1
+    }}
+}}
+
+if ($$Uninstall) {{
+    Write-Output "Removing Scheduled Task '$$TaskName'..."
+
+    $$existing = Get-ScheduledTask -TaskName $$TaskName -ErrorAction SilentlyContinue
+    if ($$existing) {{
+        Unregister-ScheduledTask -TaskName $$TaskName -Confirm:$$false
+        if ($$?) {{
+            Write-Output "Scheduled Task '$$TaskName' removed successfully."
+            exit 0
+        }} else {{
+            Write-Error "Failed to remove Scheduled Task '$$TaskName'."
+            exit 1
+        }}
+    }} else {{
+        Write-Output "Scheduled Task '$$TaskName' does not exist. Nothing to remove."
+        exit 0
+    }}
+}}
+
+# No switch provided — show usage
+Write-Output "Usage: $$($$($$MyInvocation.MyCommand.Name)) -Install | -Uninstall"
+exit 1
+"""
+
+
+def ensure_ps1_script() -> str:
+    """Ensure the Start-OoProxy.ps1 script exists in the ooproxy root.
+    
+    Creates the script if it doesn't exist or if it's outdated.
+    
+    Returns:
+        The full path to the Start-OoProxy.ps1 script.
+        
+    Raises:
+        RuntimeError: If ooProxy home is not set.
+    """
+    if _ooproxy_home is None:
+        raise RuntimeError("ooProxy home is not set")
+    
+    ps1_path = _ooproxy_home / "Start-OoProxy.ps1"
+    
+    # Get the ooUI root (parent of ooproxy)
+    ooui_root = _ooproxy_home.parent
+    
+    # Generate the script content
+    script_content = _get_ps1_script_content(ooui_root)
+    
+    # Write the script if it doesn't exist or needs updating
+    try:
+        ps1_path.write_text(script_content, encoding="utf-8")
+    except Exception as e:
+        raise RuntimeError(f"Failed to write Start-OoProxy.ps1: {e}")
+    
+    return str(ps1_path)
 
 
 # Populate on import so the rest of the app can call get_ooproxy_home() immediately

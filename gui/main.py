@@ -71,8 +71,20 @@ def main() -> int:
     app.setApplicationVersion("1.0.0")
     app.setQuitOnLastWindowClosed(False)
 
+    # Load ooProxy home from persisted config
+    ooproxy_home = resources.load_ooproxy_home()
+    if ooproxy_home:
+        resources.set_ooproxy_home(ooproxy_home)
+
     if not _ensure_ooproxy_home(app):
         return 1
+
+    # Ensure the PowerShell auto-start script exists
+    try:
+        resources.ensure_ps1_script()
+    except Exception as e:
+        # Log but don't fail — auto-start is optional
+        print(f"[WARN] Failed to create Start-OoProxy.ps1: {e}")
 
     from gui.main_window import MainWindow
     
